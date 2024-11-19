@@ -1,3 +1,8 @@
+"""
+Todo:
+    * replace uninitialized parameters with default values or Falsey values
+    * switch to SolidPrimitive().CYLINDER for pedestrians and specify size as radius
+"""
 import random
 import yaml
 import math
@@ -8,13 +13,15 @@ from nav_msgs.msg import Path
 from visualization_msgs.msg import Marker, MarkerArray
 from sensor_msgs.msg import PointCloud2, PointField
 from derived_object_msgs.msg import Object, ObjectArray
+from shape_msgs.msg import SolidPrimitive
 from std_msgs.msg import Header
 import struct
+import sys
 
 
 class FakeObstaclePublisher(Node):
     def __init__(self):
-        super(FakeObstaclePublisher).__init__('fake_obstacle_publisher')
+        super(FakeObstaclePublisher, self).__init__('fake_obstacle_publisher')
 
         # Load parameters
         self.declare_parameter('config_file', '')
@@ -41,7 +48,7 @@ class FakeObstaclePublisher(Node):
         else:
             self.get_logger().error("No config file provided. Exiting.")
             self.destroy_node()
-            return
+            sys.exit(1)
 
         # Get optional parameters or use defaults from the config file
         self.publish_rate = self.get_parameter('publish_rate').get_parameter_value().double_value or self.config.get('publish_rate', 10.0)
@@ -222,13 +229,26 @@ class FakeObstaclePublisher(Node):
             # Create an Object for state publishing
             obj = Object()
             obj.id = i
-            obj.object_type = Object.TYPE_PEDESTRIAN if obstacle['type'] == 'pedestrian' else Object.TYPE_CAR
+            """
+            * https://docs.ros.org/en/melodic/api/derived_object_msgs/html/msg/ObjectArray.html 
+            * https://docs.ros.org/en/jazzy/p/derived_object_msgs/interfaces/msg/Object.html
+            """
+            obj.detection_level = Object.OBJECT_TRACKED  # OBJECT_DETECTED or Object.OBJECT_TRACKED
+            obj.object_classified = True
+            obj.classification = Object.CLASSIFICATION_PEDESTRIAN if obstacle['type'] == 'pedestrian' else Object.CLASSIFICATION_CAR
+            obj.classification_certainty = int(255)
+
             obj.pose.position.x, obj.pose.position.y, obj.pose.position.z = obstacle['position']
             obj.pose.orientation.w = math.cos(obstacle['orientation'] / 2.0)
             obj.pose.orientation.z = math.sin(obstacle['orientation'] / 2.0)
-            obj.velocity.linear.x, obj.velocity.linear.y, obj.velocity.linear.z = obstacle['velocity']
-            obj.velocity.angular.x, obj.velocity.angular.y, obj.velocity.angular.z = obstacle['angular_velocity']
-            obj.shape.type = Object.SHAPE_BOX
+
+            obj.twist.linear.x, obj.twist.linear.y, obj.twist.linear.z = obstacle['velocity']
+            obj.twist.angular.x, obj.twist.angular.y, obj.twist.angular.z = obstacle['angular_velocity']
+
+            obj.accel.linear.x, obj.accel.linear.y, obj.accel.linear.z = 0.0, 0.0, 0.0
+            obj.accel.angular.x, obj.accel.angular.y, obj.accel.angular.z = 0.0, 0.0, 0.0
+
+            obj.shape.type = SolidPrimitive().BOX
             obj.shape.dimensions = obstacle['size']
 
             object_array.objects.append(obj)
